@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Video Call</title>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/easyrtc/easyrtc.js"></script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --pip-w: 110px; --pip-h: 145px; }
+
+    html, body { width:100%; height:100%; background:#111; font-family:'Inter',sans-serif; overflow:hidden; }
+
+    .frame { position:relative; width:100vw; height:100vh; background:#000; overflow:hidden; }
+
+    /* Remote video — full background */
+    #callerVideo {
+      position:absolute; inset:0;
+      width:100%; height:100%;
+      object-fit:cover; display:block;
+      background:#1a1a1a; z-index:1;
+    }
+
+    /* Waiting overlay */
+    .waiting-overlay {
+      position:absolute; inset:0; z-index:2;
+      background:#1c1c1e;
+      display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+      transition:opacity .4s;
+    }
+    .waiting-overlay.hidden { opacity:0; pointer-events:none; }
+
+    .avatar-ring {
+      width:90px; height:90px; border-radius:50%;
+      background:#2a2a2e; border:2px solid #3a3a3e;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .avatar-ring svg { width:44px; height:44px; fill:#555; }
+    .waiting-overlay p { color:#555; font-size:14px; font-weight:500; }
+
+    .dots span { display:inline-block; animation:dotBounce .9s ease-in-out infinite; color:#666; font-size:20px; }
+    .dots span:nth-child(2){animation-delay:.15s}
+    .dots span:nth-child(3){animation-delay:.30s}
+    @keyframes dotBounce { 0%,80%,100%{transform:translateY(0);opacity:.3} 40%{transform:translateY(-5px);opacity:1} }
+
+    /* PiP self video */
+    .pip-wrap {
+      position:absolute; bottom:100px; right:16px;
+      width:var(--pip-w); height:var(--pip-h);
+      border-radius:16px; overflow:hidden;
+      border:2.5px solid rgba(255,255,255,.25);
+      box-shadow:0 8px 32px rgba(0,0,0,.55);
+      z-index:10; cursor:grab; background:#222;
+    }
+    .pip-wrap:active { cursor:grabbing; }
+    #selfVideo { width:100%; height:100%; object-fit:cover; display:block; }
+
+    /* Top bar */
+    .top-bar {
+      position:absolute; top:0; left:0; right:0; z-index:10;
+      padding:16px 20px 32px;
+      display:flex; align-items:center; justify-content:space-between;
+      background:linear-gradient(to bottom,rgba(0,0,0,.5) 0%,transparent 100%);
+    }
+    .conn-status { font-size:12px; color:rgba(255,255,255,.6); display:flex; align-items:center; gap:5px; }
+    .conn-dot { width:6px; height:6px; border-radius:50%; background:#888; transition:background .3s; }
+    .conn-dot.live { background:#4CAF8A; animation:pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .call-timer { font-size:14px; font-weight:500; color:#fff; font-variant-numeric:tabular-nums; opacity:0; transition:opacity .4s; }
+    .call-timer.visible { opacity:1; }
+
+    /* Bottom bar */
+    .bottom-bar {
+      position:absolute; bottom:0; left:0; right:0; z-index:10;
+      padding:40px 20px 28px;
+      display:flex; flex-direction:column; align-items:center; gap:14px;
+      background:linear-gradient(to top,rgba(0,0,0,.7) 0%,transparent 100%);
+    }
+
+    /* Client list button */
+    .client-list-btn {
+      width:100%; max-width:320px;
+      background:rgba(40,40,44,.88); backdrop-filter:blur(16px);
+      border:1px solid rgba(255,255,255,.1); border-radius:14px;
+      color:#fff; font-size:15px; font-weight:500; font-family:'Inter',sans-serif;
+      padding:14px 20px; cursor:pointer;
+      display:flex; align-items:center; justify-content:space-between;
+      transition:background .15s;
+    }
+    .client-list-btn:hover { background:rgba(55,55,60,.92); }
+    .client-list-btn .left { display:flex; align-items:center; gap:10px; }
+    .client-list-btn svg { width:18px; height:18px; fill:#aaa; }
+    .client-count { background:#4CAF8A; color:#fff; font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px; min-width:22px; text-align:center; }
+
+    /* Controls */
+    .controls { display:flex; gap:20px; align-items:center; }
+    .ctrl {
+      width:52px; height:52px; border-radius:50%; border:none; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      background:rgba(255,255,255,.15); backdrop-filter:blur(8px);
+      transition:transform .15s, opacity .15s;
+    }
+    .ctrl:active { transform:scale(.92); }
+    .ctrl svg { width:22px; height:22px; fill:#fff; }
+    .ctrl.off { background:rgba(255,255,255,.08); opacity:.5; }
+    .ctrl.end-call { width:62px; height:62px; background:#FF3B30; }
+    .ctrl.end-call svg { width:26px; height:26px; }
+
+    /* Drawer */
+    .drawer {
+      position:absolute; bottom:0; left:0; right:0; z-index:20;
+      background:#1c1c1e; border-radius:24px 24px 0 0;
+      padding:12px 20px 40px;
+      transform:translateY(100%); transition:transform .32s cubic-bezier(.32,1,.23,1);
+      max-height:65vh; overflow-y:auto;
+    }
+    .drawer.open { transform:translateY(0); }
+    .drawer-handle { width:36px; height:4px; background:#3a3a3e; border-radius:2px; margin:0 auto 16px; }
+    .drawer h2 { font-size:17px; font-weight:600; color:#fff; margin-bottom:16px; text-align:center; }
+
+    /* Peer item */
+    .peer-item {
+      display:flex; align-items:center; gap:14px;
+      padding:12px 8px; border-bottom:1px solid #2a2a2e;
+      border-radius:10px; transition:background .15s;
+    }
+    .peer-item:last-child { border-bottom:none; }
+    .peer-item:hover { background:#2a2a2e; }
+    .peer-avatar { width:42px; height:42px; border-radius:50%; background:#3a3a3e; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .peer-avatar svg { width:22px; height:22px; fill:#888; }
+    .peer-info { flex:1; overflow:hidden; }
+    .peer-name { color:#fff; font-size:13px; font-weight:500; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .peer-sub { font-size:11px; margin-top:2px; }
+    .peer-sub.available { color:#4CAF8A; }
+    .peer-sub.waiting   { color:#888; }
+
+    .call-btn {
+      background:#4CAF8A; border:none; color:#fff;
+      font-size:12px; font-weight:600; padding:7px 16px;
+      border-radius:20px; cursor:pointer; font-family:'Inter',sans-serif;
+      transition:background .15s; white-space:nowrap;
+    }
+    .call-btn:hover { background:#3d9e78; }
+    .guest-label { font-size:11px; color:#555; font-style:italic; }
+
+    .empty-msg { color:#555; text-align:center; font-size:14px; padding:32px 0; line-height:1.8; }
+
+    /* Backdrop */
+    .backdrop { position:absolute; inset:0; z-index:15; background:rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:opacity .32s; }
+    .backdrop.show { opacity:1; pointer-events:all; }
+  </style>
+</head>
+
+<body onload="my_init()">
+<div class="frame">
+
+  <!-- Waiting overlay -->
+  <div class="waiting-overlay" id="waitingOverlay">
+    <div class="avatar-ring">
+      <svg viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+    </div>
+    <p id="waitingMsg">Connecting…</p>
+    <div class="dots"><span>•</span><span>•</span><span>•</span></div>
+  </div>
+
+  <!-- Remote video (full screen background) -->
+  <video id="callerVideo" autoplay playsinline></video>
+
+  <!-- Top bar -->
+  <div class="top-bar">
+    <div class="conn-status">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connLabel">Connecting…</span>
+    </div>
+    <div class="call-timer" id="callTimer">00:00</div>
+  </div>
+
+  <!-- PiP self video -->
+  <div class="pip-wrap" id="pipWrap">
+    <video id="selfVideo" autoplay playsinline muted></video>
+  </div>
+
+  <!-- Bottom bar -->
+  <div class="bottom-bar">
+    <button class="client-list-btn" id="clientListBtn">
+      <div class="left">
+        <svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+        <span>Client List</span>
+      </div>
+      <span class="client-count" id="clientCount">0</span>
+    </button>
+
+    <div class="controls">
+      <button class="ctrl" id="micBtn">
+        <svg id="micIcon" viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V20H9v2h6v-2h-2v-2.07A7 7 0 0 0 19 11h-2z"/></svg>
+      </button>
+      <button class="ctrl end-call" id="endBtn">
+        <svg viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+      </button>
+      <button class="ctrl" id="camBtn">
+        <svg id="camIcon" viewBox="0 0 24 24"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="backdrop" id="backdrop"></div>
+
+  <div class="drawer" id="drawer">
+    <div class="drawer-handle"></div>
+    <h2>Client List</h2>
+    <div id="peerItems"></div>
+  </div>
+
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+var micOn       = true;
+var camOn       = true;
+var isHost      = false;
+var roleDecided = false;
+var timerSecs   = 0;
+var timerHandle = null;
+
+// ─── DOM ──────────────────────────────────────────────────────────────────────
+var waitingOverlay = document.getElementById('waitingOverlay');
+var waitingMsg     = document.getElementById('waitingMsg');
+var connDot        = document.getElementById('connDot');
+var connLabel      = document.getElementById('connLabel');
+var callTimerEl    = document.getElementById('callTimer');
+var clientCount    = document.getElementById('clientCount');
+var drawer         = document.getElementById('drawer');
+var backdrop       = document.getElementById('backdrop');
+var peerItems      = document.getElementById('peerItems');
+
+// ─── Drawer ───────────────────────────────────────────────────────────────────
+document.getElementById('clientListBtn').onclick = function() {
+  drawer.classList.add('open');
+  backdrop.classList.add('show');
+};
+backdrop.onclick = function() {
+  drawer.classList.remove('open');
+  backdrop.classList.remove('show');
+};
+
+// ─── Peer list ────────────────────────────────────────────────────────────────
+function loggedInListener(roomName, peers) {
+  var ids = Object.keys(peers);
+  clientCount.textContent = ids.length;
+
+  // Decide role once — first time this fires
+  if (!roleDecided) {
+    roleDecided = true;
+    // If no peers exist when I first connect → I am the host
+    // If peers already exist               → I am a guest
+    isHost = (ids.length === 0);
+    console.log('Role:', isHost ? 'HOST' : 'GUEST');
+    if (isHost) {
+      waitingMsg.textContent = 'You are the host. Waiting for clients…';
+    } else {
+      waitingMsg.textContent = 'Waiting for host to call you…';
+    }
+  }
+
+  peerItems.innerHTML = '';
+
+  if (ids.length === 0) {
+    peerItems.innerHTML = '<p class="empty-msg">No clients connected yet.</p>';
+    return;
+  }
+
+  ids.forEach(function(id) {
+    var item = document.createElement('div');
+    item.className = 'peer-item';
+
+    var rightSide = isHost
+      ? '<button class="call-btn" onclick="doCall(\'' + id + '\')">Call</button>'
+      : '<span class="guest-label">waiting for host</span>';
+
+    item.innerHTML =
+      '<div class="peer-avatar"><svg viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg></div>' +
+      '<div class="peer-info">' +
+        '<div class="peer-name">' + id.slice(0, 20) + '…</div>' +
+        '<div class="peer-sub ' + (isHost ? 'available' : 'waiting') + '">' + (isHost ? '● Available' : '● Host') + '</div>' +
+      '</div>' +
+      rightSide;
+
+    peerItems.appendChild(item);
+  });
+}
+
+// ─── Call (host only) ─────────────────────────────────────────────────────────
+// This is the EXACT same pattern as the original working demo — just easyrtc.call()
+// with success/failure callbacks, nothing else.
+function doCall(easyrtcid) {
+  drawer.classList.remove('open');
+  backdrop.classList.remove('show');
+
+  easyrtc.call(
+    easyrtcid,
+    function(caller, mediaType) {
+      console.log('Call success:', caller);
+    },
+    function(errCode, errText) {
+      console.error('Call error:', errCode, errText);
+    }
+  );
+}
+
+// ─── Hang up ──────────────────────────────────────────────────────────────────
+document.getElementById('endBtn').onclick = function() {
+  easyrtc.hangupAll();
+};
+
+// ─── Mic toggle ───────────────────────────────────────────────────────────────
+document.getElementById('micBtn').onclick = function() {
+  micOn = !micOn;
+  var s = window._localStream || easyrtc.getLocalStream();
+  if (s) s.getAudioTracks().forEach(function(t) { t.enabled = micOn; });
+  document.getElementById('micBtn').classList.toggle('off', !micOn);
+  document.getElementById('micIcon').innerHTML = micOn
+    ? '<path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V20H9v2h6v-2h-2v-2.07A7 7 0 0 0 19 11h-2z"/>'
+    : '<path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/>';
+};
+
+// ─── Camera toggle ────────────────────────────────────────────────────────────
+document.getElementById('camBtn').onclick = function() {
+  camOn = !camOn;
+  var s = window._localStream || easyrtc.getLocalStream();
+  if (s) s.getVideoTracks().forEach(function(t) { t.enabled = camOn; });
+  document.getElementById('camBtn').classList.toggle('off', !camOn);
+  document.getElementById('camIcon').innerHTML = camOn
+    ? '<path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/>'
+    : '<path d="M21 6.5l-4-4-15 15 1.41 1.41L9 13.31V17a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3.5l4 4v-11zm-10 9l-3-3h9.17L11 15.5zM3 7h1.83l12 12H3z"/>';
+};
+
+// ─── Timer ────────────────────────────────────────────────────────────────────
+function startTimer() {
+  timerSecs = 0;
+  callTimerEl.classList.add('visible');
+  timerHandle = setInterval(function() {
+    timerSecs++;
+    var m = Math.floor(timerSecs / 60), s = timerSecs % 60;
+    callTimerEl.textContent = (m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+  }, 1000);
+}
+function stopTimer() {
+  clearInterval(timerHandle);
+  callTimerEl.classList.remove('visible');
+  callTimerEl.textContent = '00:00';
+}
+
+// ─── Draggable PiP ────────────────────────────────────────────────────────────
+(function(){
+  var pip = document.getElementById('pipWrap');
+  var dragging=false, sx,sy, ox,oy;
+  pip.addEventListener('mousedown', function(e){
+    dragging=true; sx=e.clientX; sy=e.clientY;
+    var r=pip.getBoundingClientRect(); ox=r.left; oy=r.top;
+    pip.style.right='auto'; pip.style.bottom='auto';
+    pip.style.left=ox+'px'; pip.style.top=oy+'px';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', function(e){
+    if(!dragging)return;
+    pip.style.left=(ox+e.clientX-sx)+'px';
+    pip.style.top=(oy+e.clientY-sy)+'px';
+  });
+  document.addEventListener('mouseup', function(){ dragging=false; });
+})();
+
+// ─── EasyRTC init — copied exactly from the working original demo ──────────────
+// Key insight: pass ['callerVideo'] to easyApp so easyRTC wires the stream
+// automatically. setStreamAcceptor and setOnStreamClosed are called AFTER easyApp
+// exactly like the original demo does it.
+function my_init() {
+
+  easyrtc.setRoomOccupantListener(loggedInListener);
+  easyrtc.setVideoDims(1280, 720);
+
+  // *** EXACT same pattern as the original working demo ***
+  easyrtc.easyApp(
+    'easyrtc.audioVideoSimpleHD',
+    'selfVideo',
+    ['callerVideo'],              // let easyRTC wire the stream automatically
+    function(myId) {
+      connDot.classList.add('live');
+      connLabel.textContent = 'Ready';
+      console.log('Connected as', myId);
+    },
+    function(errCode, errText) {
+      connLabel.textContent = 'Error';
+      console.error('EasyRTC error:', errCode, errText);
+    }
+  );
+
+  // After easyApp — wire stream to video element explicitly
+  easyrtc.setStreamAcceptor(function(callerId, stream) {
+    console.log('Stream received from', callerId);
+    // Explicitly attach the stream to the video element
+    var vid = document.getElementById('callerVideo');
+    easyrtc.setVideoObjectSrc(vid, stream);
+    waitingOverlay.classList.add('hidden');
+    connLabel.textContent = 'In call';
+    startTimer();
+  });
+
+  easyrtc.setOnStreamClosed(function(callerId) {
+    console.log('Stream closed by', callerId);
+    var vid = document.getElementById('callerVideo');
+    easyrtc.setVideoObjectSrc(vid, '');
+    waitingOverlay.classList.remove('hidden');
+    connLabel.textContent = 'Ready';
+    stopTimer();
+  });
+
+  // Store local stream reference once camera is ready
+  easyrtc.setLocalStreamListener(function(stream) {
+    console.log('Local stream ready');
+    window._localStream = stream;
+  });
+}
+</script>
+
+</body>
+</html>

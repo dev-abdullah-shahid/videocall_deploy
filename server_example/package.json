@@ -1,0 +1,20 @@
+{
+  "name": "open-easyrtc-server-example",
+  "version": "0.1.6",
+  "author": "Harold Thetiot <hthetiot@gmail.com>",
+  "description": "Simple EasyRTC server example which includes EasyRTC, Express, and Socket.io",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "serve-static": "^1.16.2",
+    "socket.io": "^4.8.1",
+    "open-easyrtc": "^2.1.5"
+  },
+  "license": "BSD-2-Clause",
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
