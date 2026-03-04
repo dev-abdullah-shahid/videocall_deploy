@@ -14,11 +14,26 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root { --pip-w: 110px; --pip-h: 145px; }
 
-    html, body { width:100%; height:100%; background:#111; font-family:'Inter',sans-serif; overflow:hidden; }
+    html, body {
+      width:100%; height:100%;
+      background:#111;
+      font-family:'Inter',sans-serif;
+      overflow:hidden;
+      display:flex; align-items:center; justify-content:center;
+    }
 
-    .frame { position:relative; width:100vw; height:100vh; background:#000; overflow:hidden; }
+    .frame {
+      position:relative;
+      width:500px;
+      height:500px;
+      background:#000;
+      overflow:hidden;
+      border-radius:16px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.6);
+      flex-shrink:0;
+    }
 
-    /* Remote video — full background */
+    /* Remote video — fills the 500x500 box */
     #callerVideo {
       position:absolute; inset:0;
       width:100%; height:100%;
@@ -30,6 +45,7 @@
     .waiting-overlay {
       position:absolute; inset:0; z-index:2;
       background:#1c1c1e;
+      border-radius:16px;
       display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
       transition:opacity .4s;
     }
@@ -50,10 +66,10 @@
 
     /* PiP self video */
     .pip-wrap {
-      position:absolute; bottom:100px; right:16px;
-      width:var(--pip-w); height:var(--pip-h);
-      border-radius:16px; overflow:hidden;
-      border:2.5px solid rgba(255,255,255,.25);
+      position:absolute; bottom:90px; right:10px;
+      width:90px; height:120px;
+      border-radius:12px; overflow:hidden;
+      border:2px solid rgba(255,255,255,.25);
       box-shadow:0 8px 32px rgba(0,0,0,.55);
       z-index:10; cursor:grab; background:#222;
     }
@@ -84,7 +100,7 @@
 
     /* Client list button */
     .client-list-btn {
-      width:100%; max-width:320px;
+      width:50%; max-width:460px;
       background:rgba(40,40,44,.88); backdrop-filter:blur(16px);
       border:1px solid rgba(255,255,255,.1); border-radius:14px;
       color:#fff; font-size:15px; font-weight:500; font-family:'Inter',sans-serif;
