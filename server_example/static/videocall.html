@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
   <title>Video Call</title>
 
   <script src="/socket.io/socket.io.js"></script>
@@ -12,163 +12,250 @@
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root { --pip-w: 110px; --pip-h: 145px; }
 
     html, body {
-      width:100%; height:100%;
-      background:#111;
-      font-family:'Inter',sans-serif;
-      overflow:hidden;
-      display:flex; align-items:center; justify-content:center;
+      width: 100%; height: 100%;
+      background: #111;
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+      /* On desktop: center a 500x500 card. On mobile: full screen */
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
+    /* ── Frame ───────────────────────────────────────────────────────────── */
     .frame {
-      position:relative;
-      width:500px;
-      height:500px;
-      background:#000;
-      overflow:hidden;
-      border-radius:16px;
-      box-shadow: 0 24px 80px rgba(0,0,0,.6);
-      flex-shrink:0;
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      overflow: hidden;
     }
 
-    /* Remote video — fills the 500x500 box */
+    /* Desktop: show as a centered card */
+    @media (min-width: 600px) {
+      .frame {
+        width: 500px;
+        height: 500px;
+        border-radius: 20px;
+        box-shadow: 0 32px 80px rgba(0,0,0,.7);
+      }
+    }
+
+    /* ── Remote video ────────────────────────────────────────────────────── */
     #callerVideo {
-      position:absolute; inset:0;
-      width:100%; height:100%;
-      object-fit:cover; display:block;
-      background:#1a1a1a; z-index:1;
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover; display: block;
+      background: #1a1a1a; z-index: 1;
     }
 
-    /* Waiting overlay */
+    /* ── Waiting overlay ─────────────────────────────────────────────────── */
     .waiting-overlay {
-      position:absolute; inset:0; z-index:2;
-      background:#1c1c1e;
-      border-radius:16px;
-      display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
-      transition:opacity .4s;
+      position: absolute; inset: 0; z-index: 2;
+      background: #1c1c1e;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+      transition: opacity .4s;
     }
-    .waiting-overlay.hidden { opacity:0; pointer-events:none; }
+    .waiting-overlay.hidden { opacity: 0; pointer-events: none; }
 
     .avatar-ring {
-      width:90px; height:90px; border-radius:50%;
-      background:#2a2a2e; border:2px solid #3a3a3e;
-      display:flex; align-items:center; justify-content:center;
+      width: 80px; height: 80px; border-radius: 50%;
+      background: #2a2a2e; border: 2px solid #3a3a3e;
+      display: flex; align-items: center; justify-content: center;
     }
-    .avatar-ring svg { width:44px; height:44px; fill:#555; }
-    .waiting-overlay p { color:#555; font-size:14px; font-weight:500; }
+    .avatar-ring svg { width: 40px; height: 40px; fill: #555; }
+    .waiting-overlay p { color: #555; font-size: 14px; font-weight: 500; text-align: center; padding: 0 24px; }
 
-    .dots span { display:inline-block; animation:dotBounce .9s ease-in-out infinite; color:#666; font-size:20px; }
-    .dots span:nth-child(2){animation-delay:.15s}
-    .dots span:nth-child(3){animation-delay:.30s}
-    @keyframes dotBounce { 0%,80%,100%{transform:translateY(0);opacity:.3} 40%{transform:translateY(-5px);opacity:1} }
+    .dots span {
+      display: inline-block;
+      animation: dotBounce .9s ease-in-out infinite;
+      color: #666; font-size: 20px;
+    }
+    .dots span:nth-child(2) { animation-delay: .15s; }
+    .dots span:nth-child(3) { animation-delay: .30s; }
+    @keyframes dotBounce {
+      0%,80%,100% { transform: translateY(0); opacity: .3; }
+      40%          { transform: translateY(-5px); opacity: 1; }
+    }
 
-    /* PiP self video */
+    /* ── PiP self video ──────────────────────────────────────────────────── */
     .pip-wrap {
-      position:absolute; bottom:90px; right:10px;
-      width:90px; height:120px;
-      border-radius:12px; overflow:hidden;
-      border:2px solid rgba(255,255,255,.25);
-      box-shadow:0 8px 32px rgba(0,0,0,.55);
-      z-index:10; cursor:grab; background:#222;
+      position: absolute;
+      bottom: 100px; right: 12px;
+      width: 100px; height: 110px;
+      border-radius: 12px; overflow: hidden;
+      border: 2px solid rgba(255,255,255,.25);
+      box-shadow: 0 8px 24px rgba(0,0,0,.5);
+      z-index: 10; cursor: grab; background: #222;
+      touch-action: none;
     }
-    .pip-wrap:active { cursor:grabbing; }
-    #selfVideo { width:100%; height:100%; object-fit:cover; display:block; }
+    .pip-wrap:active { cursor: grabbing; }
+    #selfVideo { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-    /* Top bar */
+    /* Bigger PiP on larger phones */
+    @media (min-width: 400px) {
+      .pip-wrap { width: 100px; height: 135px; }
+    }
+
+    /* ── Top bar ─────────────────────────────────────────────────────────── */
     .top-bar {
-      position:absolute; top:0; left:0; right:0; z-index:10;
-      padding:16px 20px 32px;
-      display:flex; align-items:center; justify-content:space-between;
-      background:linear-gradient(to bottom,rgba(0,0,0,.5) 0%,transparent 100%);
+      position: absolute; top: 0; left: 0; right: 0; z-index: 10;
+      padding: 14px 16px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: linear-gradient(to bottom, rgba(0,0,0,.55) 0%, transparent 100%);
     }
-    .conn-status { font-size:12px; color:rgba(255,255,255,.6); display:flex; align-items:center; gap:5px; }
-    .conn-dot { width:6px; height:6px; border-radius:50%; background:#888; transition:background .3s; }
-    .conn-dot.live { background:#4CAF8A; animation:pulse 2s ease-in-out infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-    .call-timer { font-size:14px; font-weight:500; color:#fff; font-variant-numeric:tabular-nums; opacity:0; transition:opacity .4s; }
-    .call-timer.visible { opacity:1; }
 
-    /* Bottom bar */
+    .conn-status {
+      font-size: 11px; color: rgba(255,255,255,.65);
+      display: flex; align-items: center; gap: 5px;
+    }
+    .conn-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #888; transition: background .3s; flex-shrink: 0;
+    }
+    .conn-dot.live { background: #4CAF8A; animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    .call-timer {
+      font-size: 13px; font-weight: 500; color: #fff;
+      font-variant-numeric: tabular-nums;
+      opacity: 0; transition: opacity .4s;
+    }
+    .call-timer.visible { opacity: 1; }
+
+    /* ── Bottom bar ──────────────────────────────────────────────────────── */
     .bottom-bar {
-      position:absolute; bottom:0; left:0; right:0; z-index:10;
-      padding:40px 20px 28px;
-      display:flex; flex-direction:column; align-items:center; gap:14px;
-      background:linear-gradient(to top,rgba(0,0,0,.7) 0%,transparent 100%);
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+      padding: 32px 16px env(safe-area-inset-bottom, 20px);
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      background: linear-gradient(to top, rgba(0,0,0,.75) 0%, transparent 100%);
     }
 
     /* Client list button */
     .client-list-btn {
-      width:50%; max-width:460px;
-      background:rgba(40,40,44,.88); backdrop-filter:blur(16px);
-      border:1px solid rgba(255,255,255,.1); border-radius:14px;
-      color:#fff; font-size:15px; font-weight:500; font-family:'Inter',sans-serif;
-      padding:14px 20px; cursor:pointer;
-      display:flex; align-items:center; justify-content:space-between;
-      transition:background .15s;
+      width: 50%;
+      background: rgba(36,36,40,.9);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 14px;
+      color: #fff; font-size: 14px; font-weight: 500;
+      font-family: 'Inter', sans-serif;
+      padding: 13px 16px; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between;
+      -webkit-tap-highlight-color: transparent;
     }
-    .client-list-btn:hover { background:rgba(55,55,60,.92); }
-    .client-list-btn .left { display:flex; align-items:center; gap:10px; }
-    .client-list-btn svg { width:18px; height:18px; fill:#aaa; }
-    .client-count { background:#4CAF8A; color:#fff; font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px; min-width:22px; text-align:center; }
+    .client-list-btn:active { background: rgba(55,55,60,.95); }
+    .client-list-btn .left { display: flex; align-items: center; gap: 10px; }
+    .client-list-btn svg { width: 18px; height: 18px; fill: #aaa; flex-shrink: 0; }
+    .client-count {
+      background: #4CAF8A; color: #fff;
+      font-size: 11px; font-weight: 700;
+      padding: 2px 8px; border-radius: 999px;
+      min-width: 22px; text-align: center;
+    }
 
-    /* Controls */
-    .controls { display:flex; gap:20px; align-items:center; }
+    /* Controls row */
+    .controls { display: flex; gap: 16px; align-items: center; }
+
     .ctrl {
-      width:52px; height:52px; border-radius:50%; border:none; cursor:pointer;
-      display:flex; align-items:center; justify-content:center;
-      background:rgba(255,255,255,.15); backdrop-filter:blur(8px);
-      transition:transform .15s, opacity .15s;
+      width: 50px; height: 50px; border-radius: 50%; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,.15);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      -webkit-tap-highlight-color: transparent;
+      transition: transform .12s, opacity .15s;
     }
-    .ctrl:active { transform:scale(.92); }
-    .ctrl svg { width:22px; height:22px; fill:#fff; }
-    .ctrl.off { background:rgba(255,255,255,.08); opacity:.5; }
-    .ctrl.end-call { width:62px; height:62px; background:#FF3B30; }
-    .ctrl.end-call svg { width:26px; height:26px; }
+    .ctrl:active { transform: scale(.9); }
+    .ctrl svg { width: 22px; height: 22px; fill: #fff; }
+    .ctrl.off { opacity: .4; background: rgba(255,255,255,.08); }
 
-    /* Drawer */
-    .drawer {
-      position:absolute; bottom:0; left:0; right:0; z-index:20;
-      background:#1c1c1e; border-radius:24px 24px 0 0;
-      padding:12px 20px 40px;
-      transform:translateY(100%); transition:transform .32s cubic-bezier(.32,1,.23,1);
-      max-height:65vh; overflow-y:auto;
+    .ctrl.end-call {
+      width: 60px; height: 60px;
+      background: #FF3B30;
     }
-    .drawer.open { transform:translateY(0); }
-    .drawer-handle { width:36px; height:4px; background:#3a3a3e; border-radius:2px; margin:0 auto 16px; }
-    .drawer h2 { font-size:17px; font-weight:600; color:#fff; margin-bottom:16px; text-align:center; }
+    .ctrl.end-call svg { width: 24px; height: 24px; }
+
+    /* Larger tap targets on mobile */
+    @media (max-width: 599px) {
+      .ctrl { width: 52px; height: 52px; }
+      .ctrl.end-call { width: 62px; height: 62px; }
+      .controls { gap: 20px; }
+    }
+
+    /* ── Backdrop ────────────────────────────────────────────────────────── */
+    .backdrop {
+      position: absolute; inset: 0; z-index: 15;
+      background: rgba(0,0,0,.55);
+      opacity: 0; pointer-events: none; transition: opacity .3s;
+    }
+    .backdrop.show { opacity: 1; pointer-events: all; }
+
+    /* ── Drawer ──────────────────────────────────────────────────────────── */
+    .drawer {
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 20;
+      background: #1c1c1e;
+      border-radius: 20px 20px 0 0;
+      padding: 10px 16px env(safe-area-inset-bottom, 28px);
+      transform: translateY(100%);
+      transition: transform .32s cubic-bezier(.32,1,.23,1);
+      max-height: 70vh; overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .drawer.open { transform: translateY(0); }
+
+    .drawer-handle {
+      width: 36px; height: 4px; background: #3a3a3e;
+      border-radius: 2px; margin: 0 auto 14px;
+    }
+    .drawer h2 {
+      font-size: 16px; font-weight: 600; color: #fff;
+      margin-bottom: 14px; text-align: center;
+    }
 
     /* Peer item */
     .peer-item {
-      display:flex; align-items:center; gap:14px;
-      padding:12px 8px; border-bottom:1px solid #2a2a2e;
-      border-radius:10px; transition:background .15s;
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 6px; border-bottom: 1px solid #2a2a2e;
+      border-radius: 10px;
+      -webkit-tap-highlight-color: transparent;
     }
-    .peer-item:last-child { border-bottom:none; }
-    .peer-item:hover { background:#2a2a2e; }
-    .peer-avatar { width:42px; height:42px; border-radius:50%; background:#3a3a3e; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-    .peer-avatar svg { width:22px; height:22px; fill:#888; }
-    .peer-info { flex:1; overflow:hidden; }
-    .peer-name { color:#fff; font-size:13px; font-weight:500; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .peer-sub { font-size:11px; margin-top:2px; }
-    .peer-sub.available { color:#4CAF8A; }
-    .peer-sub.waiting   { color:#888; }
+    .peer-item:last-child { border-bottom: none; }
+    .peer-item:active { background: #2a2a2e; }
+
+    .peer-avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: #3a3a3e;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .peer-avatar svg { width: 20px; height: 20px; fill: #888; }
+
+    .peer-info { flex: 1; overflow: hidden; min-width: 0; }
+    .peer-name {
+      color: #fff; font-size: 12px; font-weight: 500;
+      font-family: monospace;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .peer-sub { font-size: 11px; margin-top: 2px; }
+    .peer-sub.available { color: #4CAF8A; }
+    .peer-sub.waiting   { color: #888; }
 
     .call-btn {
-      background:#4CAF8A; border:none; color:#fff;
-      font-size:12px; font-weight:600; padding:7px 16px;
-      border-radius:20px; cursor:pointer; font-family:'Inter',sans-serif;
-      transition:background .15s; white-space:nowrap;
+      background: #4CAF8A; border: none; color: #fff;
+      font-size: 13px; font-weight: 600;
+      padding: 8px 18px; border-radius: 20px;
+      cursor: pointer; font-family: 'Inter', sans-serif;
+      white-space: nowrap; flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent;
     }
-    .call-btn:hover { background:#3d9e78; }
-    .guest-label { font-size:11px; color:#555; font-style:italic; }
+    .call-btn:active { background: #3d9e78; }
 
-    .empty-msg { color:#555; text-align:center; font-size:14px; padding:32px 0; line-height:1.8; }
-
-    /* Backdrop */
-    .backdrop { position:absolute; inset:0; z-index:15; background:rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:opacity .32s; }
-    .backdrop.show { opacity:1; pointer-events:all; }
+    .guest-label { font-size: 11px; color: #555; font-style: italic; flex-shrink: 0; }
+    .empty-msg { color: #555; text-align: center; font-size: 14px; padding: 28px 0; line-height: 1.8; }
   </style>
 </head>
 
@@ -184,7 +271,7 @@
     <div class="dots"><span>•</span><span>•</span><span>•</span></div>
   </div>
 
-  <!-- Remote video (full screen background) -->
+  <!-- Remote video -->
   <video id="callerVideo" autoplay playsinline></video>
 
   <!-- Top bar -->
@@ -235,15 +322,10 @@
 </div>
 
 <script>
-// ─── State ────────────────────────────────────────────────────────────────────
-var micOn       = true;
-var camOn       = true;
-var isHost      = false;
-var roleDecided = false;
-var timerSecs   = 0;
-var timerHandle = null;
+var micOn = true, camOn = true;
+var isHost = false, roleDecided = false;
+var timerSecs = 0, timerHandle = null;
 
-// ─── DOM ──────────────────────────────────────────────────────────────────────
 var waitingOverlay = document.getElementById('waitingOverlay');
 var waitingMsg     = document.getElementById('waitingMsg');
 var connDot        = document.getElementById('connDot');
@@ -254,7 +336,7 @@ var drawer         = document.getElementById('drawer');
 var backdrop       = document.getElementById('backdrop');
 var peerItems      = document.getElementById('peerItems');
 
-// ─── Drawer ───────────────────────────────────────────────────────────────────
+// ── Drawer ────────────────────────────────────────────────────────────────────
 document.getElementById('clientListBtn').onclick = function() {
   drawer.classList.add('open');
   backdrop.classList.add('show');
@@ -264,23 +346,18 @@ backdrop.onclick = function() {
   backdrop.classList.remove('show');
 };
 
-// ─── Peer list ────────────────────────────────────────────────────────────────
+// ── Peer list ─────────────────────────────────────────────────────────────────
 function loggedInListener(roomName, peers) {
   var ids = Object.keys(peers);
   clientCount.textContent = ids.length;
 
-  // Decide role once — first time this fires
   if (!roleDecided) {
     roleDecided = true;
-    // If no peers exist when I first connect → I am the host
-    // If peers already exist               → I am a guest
     isHost = (ids.length === 0);
     console.log('Role:', isHost ? 'HOST' : 'GUEST');
-    if (isHost) {
-      waitingMsg.textContent = 'You are the host. Waiting for clients…';
-    } else {
-      waitingMsg.textContent = 'Waiting for host to call you…';
-    }
+    waitingMsg.textContent = isHost
+      ? 'You are the host. Waiting for clients…'
+      : 'Waiting for host to call you…';
   }
 
   peerItems.innerHTML = '';
@@ -293,47 +370,35 @@ function loggedInListener(roomName, peers) {
   ids.forEach(function(id) {
     var item = document.createElement('div');
     item.className = 'peer-item';
-
     var rightSide = isHost
       ? '<button class="call-btn" onclick="doCall(\'' + id + '\')">Call</button>'
       : '<span class="guest-label">waiting for host</span>';
-
     item.innerHTML =
       '<div class="peer-avatar"><svg viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg></div>' +
       '<div class="peer-info">' +
-        '<div class="peer-name">' + id.slice(0, 20) + '…</div>' +
+        '<div class="peer-name">' + id.slice(0, 18) + '…</div>' +
         '<div class="peer-sub ' + (isHost ? 'available' : 'waiting') + '">' + (isHost ? '● Available' : '● Host') + '</div>' +
       '</div>' +
       rightSide;
-
     peerItems.appendChild(item);
   });
 }
 
-// ─── Call (host only) ─────────────────────────────────────────────────────────
-// This is the EXACT same pattern as the original working demo — just easyrtc.call()
-// with success/failure callbacks, nothing else.
+// ── Call ──────────────────────────────────────────────────────────────────────
 function doCall(easyrtcid) {
   drawer.classList.remove('open');
   backdrop.classList.remove('show');
-
   easyrtc.call(
     easyrtcid,
-    function(caller, mediaType) {
-      console.log('Call success:', caller);
-    },
-    function(errCode, errText) {
-      console.error('Call error:', errCode, errText);
-    }
+    function(caller) { console.log('Call success:', caller); },
+    function(errCode, errText) { console.error('Call error:', errCode, errText); }
   );
 }
 
-// ─── Hang up ──────────────────────────────────────────────────────────────────
-document.getElementById('endBtn').onclick = function() {
-  easyrtc.hangupAll();
-};
+// ── Hang up ───────────────────────────────────────────────────────────────────
+document.getElementById('endBtn').onclick = function() { easyrtc.hangupAll(); };
 
-// ─── Mic toggle ───────────────────────────────────────────────────────────────
+// ── Mic toggle ────────────────────────────────────────────────────────────────
 document.getElementById('micBtn').onclick = function() {
   micOn = !micOn;
   var s = window._localStream || easyrtc.getLocalStream();
@@ -344,7 +409,7 @@ document.getElementById('micBtn').onclick = function() {
     : '<path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/>';
 };
 
-// ─── Camera toggle ────────────────────────────────────────────────────────────
+// ── Camera toggle ─────────────────────────────────────────────────────────────
 document.getElementById('camBtn').onclick = function() {
   camOn = !camOn;
   var s = window._localStream || easyrtc.getLocalStream();
@@ -355,7 +420,7 @@ document.getElementById('camBtn').onclick = function() {
     : '<path d="M21 6.5l-4-4-15 15 1.41 1.41L9 13.31V17a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3.5l4 4v-11zm-10 9l-3-3h9.17L11 15.5zM3 7h1.83l12 12H3z"/>';
 };
 
-// ─── Timer ────────────────────────────────────────────────────────────────────
+// ── Timer ─────────────────────────────────────────────────────────────────────
 function startTimer() {
   timerSecs = 0;
   callTimerEl.classList.add('visible');
@@ -371,39 +436,44 @@ function stopTimer() {
   callTimerEl.textContent = '00:00';
 }
 
-// ─── Draggable PiP ────────────────────────────────────────────────────────────
-(function(){
+// ── Draggable PiP — works on both mouse and touch ─────────────────────────────
+(function() {
   var pip = document.getElementById('pipWrap');
-  var dragging=false, sx,sy, ox,oy;
-  pip.addEventListener('mousedown', function(e){
-    dragging=true; sx=e.clientX; sy=e.clientY;
-    var r=pip.getBoundingClientRect(); ox=r.left; oy=r.top;
-    pip.style.right='auto'; pip.style.bottom='auto';
-    pip.style.left=ox+'px'; pip.style.top=oy+'px';
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove', function(e){
-    if(!dragging)return;
-    pip.style.left=(ox+e.clientX-sx)+'px';
-    pip.style.top=(oy+e.clientY-sy)+'px';
-  });
-  document.addEventListener('mouseup', function(){ dragging=false; });
+  var dragging = false, sx, sy, ox, oy;
+
+  function startDrag(x, y) {
+    dragging = true;
+    sx = x; sy = y;
+    var r = pip.getBoundingClientRect();
+    ox = r.left; oy = r.top;
+    pip.style.right = 'auto'; pip.style.bottom = 'auto';
+    pip.style.left = ox + 'px'; pip.style.top = oy + 'px';
+  }
+  function moveDrag(x, y) {
+    if (!dragging) return;
+    pip.style.left = (ox + x - sx) + 'px';
+    pip.style.top  = (oy + y - sy) + 'px';
+  }
+  function endDrag() { dragging = false; }
+
+  pip.addEventListener('mousedown',  function(e) { startDrag(e.clientX, e.clientY); e.preventDefault(); });
+  document.addEventListener('mousemove', function(e) { moveDrag(e.clientX, e.clientY); });
+  document.addEventListener('mouseup',   endDrag);
+
+  pip.addEventListener('touchstart', function(e) { startDrag(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+  document.addEventListener('touchmove',  function(e) { if(dragging) { moveDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); } }, { passive: false });
+  document.addEventListener('touchend',   endDrag);
 })();
 
-// ─── EasyRTC init — copied exactly from the working original demo ──────────────
-// Key insight: pass ['callerVideo'] to easyApp so easyRTC wires the stream
-// automatically. setStreamAcceptor and setOnStreamClosed are called AFTER easyApp
-// exactly like the original demo does it.
+// ── EasyRTC init ──────────────────────────────────────────────────────────────
 function my_init() {
-
   easyrtc.setRoomOccupantListener(loggedInListener);
   easyrtc.setVideoDims(1280, 720);
 
-  // *** EXACT same pattern as the original working demo ***
   easyrtc.easyApp(
     'easyrtc.audioVideoSimpleHD',
     'selfVideo',
-    ['callerVideo'],              // let easyRTC wire the stream automatically
+    ['callerVideo'],
     function(myId) {
       connDot.classList.add('live');
       connLabel.textContent = 'Ready';
@@ -415,12 +485,9 @@ function my_init() {
     }
   );
 
-  // After easyApp — wire stream to video element explicitly
   easyrtc.setStreamAcceptor(function(callerId, stream) {
     console.log('Stream received from', callerId);
-    // Explicitly attach the stream to the video element
-    var vid = document.getElementById('callerVideo');
-    easyrtc.setVideoObjectSrc(vid, stream);
+    easyrtc.setVideoObjectSrc(document.getElementById('callerVideo'), stream);
     waitingOverlay.classList.add('hidden');
     connLabel.textContent = 'In call';
     startTimer();
@@ -428,16 +495,13 @@ function my_init() {
 
   easyrtc.setOnStreamClosed(function(callerId) {
     console.log('Stream closed by', callerId);
-    var vid = document.getElementById('callerVideo');
-    easyrtc.setVideoObjectSrc(vid, '');
+    easyrtc.setVideoObjectSrc(document.getElementById('callerVideo'), '');
     waitingOverlay.classList.remove('hidden');
     connLabel.textContent = 'Ready';
     stopTimer();
   });
 
-  // Store local stream reference once camera is ready
   easyrtc.setLocalStreamListener(function(stream) {
-    console.log('Local stream ready');
     window._localStream = stream;
   });
 }
